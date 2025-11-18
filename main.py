@@ -9,8 +9,7 @@ from google.adk.tools import AgentTool, google_search
 
 app = Flask(__name__)
 
-# Keep this in sync with your Cloud Run env var name
-API_KEY = os.environ.get("API_KEY")
+API_KEY = os.environ.get("API_KEY")  # <-- garde ce nom aligné avec Cloud Run
 
 
 def require_api_key(f):
@@ -25,17 +24,6 @@ def require_api_key(f):
     return wrapper
 
 
-@app.get("/healthz")
-def healthz():
-    return jsonify({"status": "ok"})
-
-
-@app.get("/hello")
-@require_api_key
-def hello():
-    return jsonify({"message": "Hello from Cloud Run (authenticated)!"})
-
-
 @app.post("/agent/query")
 @require_api_key
 def agent_query():
@@ -45,7 +33,7 @@ def agent_query():
     if not question:
         return jsonify({"error": "Missing 'question' in JSON body"}), 400
 
-    # Setup Gemini / Google AI API key (from Cloud Run secret)
+    # --- Setup Gemini API key from secret ---
     try:
         google_api_key = os.environ["GOOGLE_AI_API_KEY"]
         os.environ["GOOGLE_API_KEY"] = google_api_key
@@ -88,27 +76,22 @@ def agent_query():
             "2. Call `SummarizerAgent` to summarize the findings.\n"
             "3. Return the final summary clearly to the user."
         ),
-        tools=[
-            AgentTool(research_agent),
-            AgentTool(summarizer_agent),
-        ],
+        tools=[AgentTool(research_agent), AgentTool(summarizer_agent)],
     )
 
     runner = InMemoryRunner(agent=root_agent)
 
-    # Because Flask route is sync, we run the async ADK call via asyncio.run
     async def run_agent():
         return await runner.run_debug(question)
 
-    adk_response = asyncio.run(run_agent())
+    try:
+        adk_response = asyncio.run(run_agent())
+    except Exception as e:
+        # Log and return a 500 with a simple message
+        print(f"❌ Error while running ADK agent: {e}")
+        return jsonify({"error": "Agent execution failed"}), 500
 
-    # adk_response is usually a dict / object; for now we just stringify it
     return jsonify({
         "question": question,
         "answer": str(adk_response),
     })
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
