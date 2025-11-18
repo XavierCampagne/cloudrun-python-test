@@ -1,1 +1,3 @@
 flask
+google-adk[genai]
+google-genai
