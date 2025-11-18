@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-API_KEY = os.environ.get("API_KEY")
+API_KEY = os.environ.get("cloudrun_API_KEY")
 
 
 def require_api_key(f):
