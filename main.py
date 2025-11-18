@@ -9,7 +9,7 @@ from google.adk.tools import AgentTool, google_search
 
 app = Flask(__name__)
 
-API_KEY = os.environ.get("API_KEY")  # <-- garde ce nom aligné avec Cloud Run
+API_KEY = os.environ.get("cloudrun_API_KEY")  # <-- garde ce nom aligné avec Cloud Run
 
 
 def require_api_key(f):
