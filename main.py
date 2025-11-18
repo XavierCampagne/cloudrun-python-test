@@ -99,7 +99,7 @@ def agent_query():
     response = await runner.run_debug("""What are the latest news for the AAPL ticker and the company associated?""")
     return jsonify({
         "question": question,
-        "answer": answer
+        "answer": response
     })
 
 
