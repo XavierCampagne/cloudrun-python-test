@@ -72,8 +72,6 @@ runner = InMemoryRunner(agent=root_agent, app_name="TickerResearchApp")
 
 
 async def run_agent_once(question: str) -> str:
-    """Runs the agent end-to-end and returns concatenated text output."""
-
     session = await runner.session_service.create_session(
         app_name=runner.app_name,
         user_id="web_user",
@@ -84,9 +82,9 @@ async def run_agent_once(question: str) -> str:
     async for event in runner.run_async(
         user_id=session.user_id,
         session_id=session.id,
-        new_message=question,
+        new_message={"role": "user", "content": question},
     ):
-        # The Cloud Run ADK runner emits events with optional .text property
+        # Cloud Run ADK events generally have .text
         txt = getattr(event, "text", None)
         if txt:
             text_output.append(txt)
@@ -95,6 +93,7 @@ async def run_agent_once(question: str) -> str:
         return "(No text response from agent)"
 
     return "\n".join(text_output)
+
 
 
 # -----------------------------------------------------------------------------
