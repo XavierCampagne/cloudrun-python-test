@@ -4,7 +4,7 @@ from functools import wraps
 import os
 import asyncio
 
-from google.adk.agents import Agent
+from google.adk.agents import Agent   # or LlmAgent if you need it
 from google.adk.tools import AgentTool, google_search
 from google.adk.types import Content, Part
 
