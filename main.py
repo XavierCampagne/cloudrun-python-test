@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from functools import wraps
 import os
 import asyncio
@@ -8,7 +9,7 @@ from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool, google_search
 
 app = Flask(__name__)
-
+CORS(app, origins=["https://ticker-ai-agent.vercel.app"])
 API_KEY = os.environ.get("cloudrun_API_KEY")  # <-- garde ce nom aligné avec Cloud Run
 
 
