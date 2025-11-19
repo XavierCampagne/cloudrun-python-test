@@ -1,9 +1,6 @@
 flask
 flask-cors
-
-google-genai
-google-adk
+google-genai==0.4.0
+google-adk==0.1.5
 google-api-core
-
-# Optional but recommended for stability
 requests
