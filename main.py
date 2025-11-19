@@ -4,12 +4,9 @@ from functools import wraps
 import os
 import asyncio
 
-from google import genai  # needed so google.genai uses the key
-from google.genai.types import Part, UserContent
-
-from google.adk.agents import LlmAgent, AgentTool
-from google.adk.tools import google_search
-from google.adk.runners import InMemoryRunner
+from google.adk.agents import Agent
+from google.adk.tools import AgentTool, google_search
+from google.adk.types import Content, Part
 
 # -----------------------------------------------------------------------------
 # Config
