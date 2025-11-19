@@ -1,3 +1,4 @@
 flask
 google-adk[genai]
 google-genai
+flask-cors
