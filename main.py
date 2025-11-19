@@ -83,14 +83,13 @@ def agent_query():
 
     runner = InMemoryRunner(agent=root_agent)
 
-    # --- Construire le message utilisateur au bon format ---
+    # --- Build user message in the correct format ---
     content = types.Content(
         role="user",
-        parts=[types.Part.from_text(question)],
+        parts=[types.Part.from_text(text=question)],
     )
 
     try:
-        # run() est synchrone et renvoie un générateur d'événements
         events = runner.run(
             user_id="web-user",
             session_id="web-session",
@@ -101,24 +100,17 @@ def agent_query():
         for event in events:
             if event.content and event.content.parts:
                 for part in event.content.parts:
-                    # certains events n’ont pas de texte (tool calls, etc.)
                     if getattr(part, "text", None):
                         answer_text += part.text
 
         if not answer_text:
             answer_text = "(No text response from agent)"
 
-        return jsonify(
-            {
-                "question": question,
-                "answer": answer_text,
-            }
-        )
-
+        return jsonify({"question": question, "answer": answer_text})
     except Exception as e:
         print(f"❌ Agent execution failed: {e}")
         return jsonify({"error": "Agent execution failed"}), 500
-
+        
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
