@@ -2,18 +2,15 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from functools import wraps
 import os
-import traceback
 
 from google.adk.agents import Agent
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool, google_search
+from google.genai import types  # <-- important
 
 app = Flask(__name__)
-
-# CORS : autoriser ton front Vercel
 CORS(app, origins=["https://ticker-ai-agent.vercel.app"])
 
-# Clé API de ton backend Cloud Run (définie dans les variables d'env du service)
 API_KEY = os.environ.get("cloudrun_API_KEY")
 
 
@@ -22,22 +19,12 @@ def require_api_key(f):
     def wrapper(*args, **kwargs):
         client_key = request.headers.get("x-api-key")
         if not API_KEY:
-            # Problème de config serveur, pas du client
             return jsonify({"error": "Server API key not configured"}), 500
         if not client_key or client_key != API_KEY:
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
+
     return wrapper
-
-
-@app.get("/")
-def root():
-    return jsonify({"status": "ok", "message": "Cloud Run agent backend is up"})
-
-
-@app.get("/healthz")
-def healthz():
-    return jsonify({"status": "ok"})
 
 
 @app.post("/agent/query")
@@ -49,7 +36,7 @@ def agent_query():
     if not question:
         return jsonify({"error": "Missing 'question' in JSON body"}), 400
 
-    # --- Config Gemini API key à partir du secret Cloud Run ---
+    # --- Setup Gemini API key from secret ---
     try:
         google_api_key = os.environ["GOOGLE_AI_API_KEY"]
         os.environ["GOOGLE_API_KEY"] = google_api_key
@@ -59,15 +46,14 @@ def agent_query():
         print(f"🔑 Authentication Error: missing GOOGLE_AI_API_KEY env var. Details: {e}")
         return jsonify({"error": "Gemini API key not configured on server"}), 500
 
-    # --- Définition des sous-agents ---
-
+    # --- Define agents ---
     research_agent = Agent(
         name="ResearchAgent",
         model="gemini-2.5-flash-lite",
         instruction=(
             "You are a specialized research agent. "
             "Use the google_search tool to find 2–3 relevant pieces of information "
-            "about the user's query, and present the findings with brief citations."
+            "on the topic, and present the findings with brief citations."
         ),
         tools=[google_search],
         output_key="research_findings",
@@ -97,28 +83,41 @@ def agent_query():
 
     runner = InMemoryRunner(agent=root_agent)
 
-    try:
-        # ⚠️ Appel synchrone correct : utiliser des arguments nommés
-        adk_response = runner.run(
-            user_messages=question,
-            quiet=False,
-            verbose=False,
-        )
-        print(f"✅ ADK response: {adk_response}")
-    except Exception as e:
-        # On logge l’erreur + stacktrace pour la voir dans stdout/stderr Cloud Run
-        print(f"❌ Agent execution failed: {repr(e)}")
-        traceback.print_exc()
-        return jsonify({
-            "error": "Agent execution failed",
-            "details": str(e),
-        }), 500
+    # --- Construire le message utilisateur au bon format ---
+    content = types.Content(
+        role="user",
+        parts=[types.Part.from_text(question)],
+    )
 
-    # On renvoie juste la string (ADK gère le format interne)
-    return jsonify({
-        "question": question,
-        "answer": str(adk_response),
-    })
+    try:
+        # run() est synchrone et renvoie un générateur d'événements
+        events = runner.run(
+            user_id="web-user",
+            session_id="web-session",
+            new_message=content,
+        )
+
+        answer_text = ""
+        for event in events:
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    # certains events n’ont pas de texte (tool calls, etc.)
+                    if getattr(part, "text", None):
+                        answer_text += part.text
+
+        if not answer_text:
+            answer_text = "(No text response from agent)"
+
+        return jsonify(
+            {
+                "question": question,
+                "answer": answer_text,
+            }
+        )
+
+    except Exception as e:
+        print(f"❌ Agent execution failed: {e}")
+        return jsonify({"error": "Agent execution failed"}), 500
 
 
 if __name__ == "__main__":
