@@ -2,15 +2,19 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from functools import wraps
 import os
+import traceback
 
 from google.adk.agents import Agent
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool, google_search
 
 app = Flask(__name__)
+
+# CORS : autoriser ton front Vercel
 CORS(app, origins=["https://ticker-ai-agent.vercel.app"])
 
-API_KEY = os.environ.get("cloudrun_API_KEY")  # must match env var in Cloud Run
+# Clé API de ton backend Cloud Run (définie dans les variables d'env du service)
+API_KEY = os.environ.get("cloudrun_API_KEY")
 
 
 def require_api_key(f):
@@ -18,12 +22,17 @@ def require_api_key(f):
     def wrapper(*args, **kwargs):
         client_key = request.headers.get("x-api-key")
         if not API_KEY:
+            # Problème de config serveur, pas du client
             return jsonify({"error": "Server API key not configured"}), 500
         if not client_key or client_key != API_KEY:
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
-
     return wrapper
+
+
+@app.get("/")
+def root():
+    return jsonify({"status": "ok", "message": "Cloud Run agent backend is up"})
 
 
 @app.get("/healthz")
@@ -40,26 +49,25 @@ def agent_query():
     if not question:
         return jsonify({"error": "Missing 'question' in JSON body"}), 400
 
-    # --- Setup Gemini API key from secret ---
+    # --- Config Gemini API key à partir du secret Cloud Run ---
     try:
         google_api_key = os.environ["GOOGLE_AI_API_KEY"]
-    except KeyError as e:
+        os.environ["GOOGLE_API_KEY"] = google_api_key
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
+        print("✅ Gemini API key setup complete.")
+    except Exception as e:
         print(f"🔑 Authentication Error: missing GOOGLE_AI_API_KEY env var. Details: {e}")
         return jsonify({"error": "Gemini API key not configured on server"}), 500
 
-    os.environ["GOOGLE_API_KEY"] = google_api_key
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
-    print("✅ Gemini API key setup complete.")
-
-    # --- Define agents ---
+    # --- Définition des sous-agents ---
 
     research_agent = Agent(
         name="ResearchAgent",
         model="gemini-2.5-flash-lite",
         instruction=(
             "You are a specialized research agent. "
-            "Use the google_search tool to find 2–3 relevant pieces of information on "
-            "the topic, and present the findings with brief citations."
+            "Use the google_search tool to find 2–3 relevant pieces of information "
+            "about the user's query, and present the findings with brief citations."
         ),
         tools=[google_search],
         output_key="research_findings",
@@ -89,19 +97,28 @@ def agent_query():
 
     runner = InMemoryRunner(agent=root_agent)
 
-    # ✅ Use keyword argument user_messages=question (no asyncio.run here)
     try:
-        adk_response = runner.run(user_messages=question, quiet=False, verbose=False)
+        # ⚠️ Appel synchrone correct : utiliser des arguments nommés
+        adk_response = runner.run(
+            user_messages=question,
+            quiet=False,
+            verbose=False,
+        )
+        print(f"✅ ADK response: {adk_response}")
     except Exception as e:
-        print(f"❌ Agent execution failed: {e}")
-        return jsonify({"error": "Agent execution failed"}), 500
+        # On logge l’erreur + stacktrace pour la voir dans stdout/stderr Cloud Run
+        print(f"❌ Agent execution failed: {repr(e)}")
+        traceback.print_exc()
+        return jsonify({
+            "error": "Agent execution failed",
+            "details": str(e),
+        }), 500
 
-    return jsonify(
-        {
-            "question": question,
-            "answer": str(adk_response),
-        }
-    )
+    # On renvoie juste la string (ADK gère le format interne)
+    return jsonify({
+        "question": question,
+        "answer": str(adk_response),
+    })
 
 
 if __name__ == "__main__":
