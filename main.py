@@ -72,19 +72,30 @@ runner = InMemoryRunner(agent=root_agent, app_name="TickerResearchApp")
 
 
 async def run_agent_once(question: str) -> str:
+    """
+    Runs the agent by sending a message using the correct Cloud Run ADK structure.
+    """
+
+    # 1. Create a session
     session = await runner.session_service.create_session(
         app_name=runner.app_name,
         user_id="web_user",
     )
 
+    # 2. Prepare the message in ADK's expected format
+    user_messages = [
+        {"role": "user", "content": question}
+    ]
+
     text_output = []
 
+    # 3. Run the agent with user_messages (NOT new_message)
     async for event in runner.run_async(
         user_id=session.user_id,
         session_id=session.id,
-        new_message={"role": "user", "content": question},
+        user_messages=user_messages
     ):
-        # Cloud Run ADK events generally have .text
+        # Cloud Run ADK events have a .text attribute (NOT .content)
         txt = getattr(event, "text", None)
         if txt:
             text_output.append(txt)
@@ -93,6 +104,7 @@ async def run_agent_once(question: str) -> str:
         return "(No text response from agent)"
 
     return "\n".join(text_output)
+
 
 
 
