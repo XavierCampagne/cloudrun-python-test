@@ -76,35 +76,34 @@ root_agent = LlmAgent(
 runner = InMemoryRunner(agent=root_agent, app_name="TickerResearchApp")
 
 
-def run_agent_sync(question: str) -> str:
-    """Appelle une fois l'agent de manière synchrone et agrège le texte."""
-    # new_message doit être un Content avec role + parts
-    user_content = types.Content(
-        role="user",
-        parts=[types.Part.from_text(question)],
+async def run_agent_once(question: str) -> str:
+    session = await runner.session_service.create_session(
+        app_name=runner.app_name,
+        user_id="web_user",
     )
 
-    # IMPORTANT : utiliser les bons noms d’arguments, en mots-clés
-    events = runner.run(
-        user_id="web_user",
-        session_id="web-session",   # peu importe, fixe pour l’instant
-        new_message=user_content,
+    user_content = Content(
+        role="user",
+        parts=[Part(text=question)]
     )
 
     text_chunks = []
-    for event in events:
-        content = getattr(event, "content", None)
-        if not content:
-            continue
-        for part in getattr(content, "parts", []) or []:
-            txt = getattr(part, "text", None)
-            if txt:
-                text_chunks.append(txt)
+
+    async for event in runner.run_async(
+        user_id=session.user_id,
+        session_id=session.id,
+        new_message=user_content,
+    ):
+        if getattr(event, "content", None):
+            for part in getattr(event.content, "parts", []):
+                if getattr(part, "text", None):
+                    text_chunks.append(part.text)
 
     if not text_chunks:
         return "(No text response from agent)"
 
     return "\n".join(text_chunks)
+
 
 
 # -------------------------------------------------------------------
