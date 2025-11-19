@@ -4,9 +4,9 @@ from functools import wraps
 import os
 import asyncio
 
-from google.adk.agents import Agent   # or LlmAgent if you need it
+from google.adk.agents import Agent, LlmAgent
 from google.adk.tools import AgentTool, google_search
-from google.adk.types import Content, Part
+from google.adk.runners import InMemoryRunner
 
 # -----------------------------------------------------------------------------
 # Config
@@ -15,12 +15,10 @@ app = Flask(__name__)
 CORS(app, origins=["https://ticker-ai-agent.vercel.app"])
 
 API_KEY = os.environ.get("cloudrun_API_KEY")
-
 GOOGLE_AI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY")
+
 if GOOGLE_AI_API_KEY:
-    # ADK uses google.genai under the hood; this is the var it reads
     os.environ["GOOGLE_API_KEY"] = GOOGLE_AI_API_KEY
-    # we stay on public Gemini, not Vertex
     os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
 
 
@@ -33,20 +31,18 @@ def require_api_key(f):
         if not client_key or client_key != API_KEY:
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
-
     return wrapper
 
 
 # -----------------------------------------------------------------------------
-# ADK agents + runner (created once at import time)
+# Agents + Runner
 # -----------------------------------------------------------------------------
 research_agent = LlmAgent(
     name="ResearchAgent",
     model="gemini-2.5-flash-lite",
     instruction=(
-        "You are a specialized research agent. "
-        "Use the google_search tool to find 2–3 relevant pieces of "
-        "information on the topic, and present the findings with brief citations."
+        "You are a research agent. Use the google_search tool to gather "
+        "2–3 relevant facts with citations."
     ),
     tools=[google_search],
     output_key="research_findings",
@@ -56,57 +52,49 @@ summarizer_agent = LlmAgent(
     name="SummarizerAgent",
     model="gemini-2.5-flash-lite",
     instruction=(
-        "Read the provided research findings in state['research_findings'].\n"
-        "Create a concise summary as a bulleted list with 3–5 key points."
+        "Summarize the content in state['research_findings'] into 3–5 bullet points."
     ),
     output_key="final_summary",
 )
 
 root_agent = LlmAgent(
-    name="ResearchCoordinator",
+    name="Coordinator",
     model="gemini-2.5-flash-lite",
     instruction=(
-        "You are a research coordinator. Your goal is to answer the user's query.\n"
-        "1. Call `ResearchAgent` to gather information.\n"
-        "2. Call `SummarizerAgent` to summarize the findings.\n"
-        "3. Return the final summary clearly to the user."
+        "1. Call ResearchAgent.\n"
+        "2. Then call SummarizerAgent.\n"
+        "3. Return the final summary."
     ),
     tools=[AgentTool(research_agent), AgentTool(summarizer_agent)],
 )
 
-# In-memory runner with its own in-memory session service
 runner = InMemoryRunner(agent=root_agent, app_name="TickerResearchApp")
 
 
 async def run_agent_once(question: str) -> str:
-    """Create a session, run the agent once, and collect all text parts."""
-    # 1) create a session (async API -> must be awaited)
+    """Runs the agent end-to-end and returns concatenated text output."""
+
     session = await runner.session_service.create_session(
         app_name=runner.app_name,
         user_id="web_user",
     )
 
-    # 2) wrap the user message as Content
-    user_content = UserContent(parts=[Part(text=question)])
-
-    # 3) run the agent asynchronously and collect events
-    text_chunks = []
+    text_output = []
 
     async for event in runner.run_async(
         user_id=session.user_id,
         session_id=session.id,
-        new_message=user_content,
+        new_message=question,
     ):
-        if getattr(event, "content", None):
-            for part in getattr(event.content, "parts", []) or []:
-                txt = getattr(part, "text", None)
-                if txt:
-                    text_chunks.append(txt)
+        # The Cloud Run ADK runner emits events with optional .text property
+        txt = getattr(event, "text", None)
+        if txt:
+            text_output.append(txt)
 
-    if not text_chunks:
+    if not text_output:
         return "(No text response from agent)"
 
-    return "\n".join(text_chunks)
+    return "\n".join(text_output)
 
 
 # -----------------------------------------------------------------------------
@@ -119,10 +107,10 @@ def agent_query():
     question = body.get("question")
 
     if not question:
-        return jsonify({"error": "Missing 'question' in JSON body"}), 400
+        return jsonify({"error": "Missing 'question'"}), 400
 
     if not GOOGLE_AI_API_KEY:
-        return jsonify({"error": "Gemini API key not configured on server"}), 500
+        return jsonify({"error": "Google AI API key missing"}), 500
 
     try:
         answer = asyncio.run(run_agent_once(question))
@@ -139,11 +127,9 @@ def root():
 
 
 @app.get("/healthz")
-def healthz():
-    # So your Colab / monitoring can ping this
+def health():
     return "ok", 200
 
 
 if __name__ == "__main__":
-    # For local testing
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
