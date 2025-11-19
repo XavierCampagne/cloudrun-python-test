@@ -1,6 +1,5 @@
 flask
 flask-cors
-google-genai==0.4.0
 google-adk==1.18.0
 google-api-core
 requests
