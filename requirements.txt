@@ -1,5 +1,6 @@
 flask
 flask-cors
-google-adk==1.18.0
+google-adk
 google-api-core
+google-generativeai
 requests
