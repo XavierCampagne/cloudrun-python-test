@@ -40,38 +40,73 @@ def require_api_key(f):
 # ---------------------------------------------------------------------------
 # ADK agents & runner (created once at import time)
 # ---------------------------------------------------------------------------
-research_agent = Agent(
-    name="ResearchAgent",
+news_collector_agent = Agent(
+    name="NewsCollectorAgent",
     model="gemini-2.5-flash-lite",
     instruction=(
-        "You are a specialized research agent. "
-        "Use the google_search tool to find 2–3 relevant pieces of information "
-        "on the topic, and present the findings with brief citations."
+        "You are a news collector for a financial ticker.\n"
+        "Input: a ticker symbol (e.g. 'TSLA') and an optional time window.\n"
+        "Use the google_search tool to find the 5–10 most relevant, recent news "
+        "about this ticker.\n"
+        "For each news item, return a JSON list under key 'news_items' with objects:\n"
+        "{'headline': ..., 'source': ..., 'date': ..., 'url': ..., 'short_summary': ...}.\n"
+        "short_summary should be 2–3 lines max, in your own words."
     ),
     tools=[google_search],
-    output_key="research_findings",
+    output_key="news_items",
 )
 
-summarizer_agent = Agent(
-    name="SummarizerAgent",
+classifier_agent = Agent(
+    name="ClassifierAgent",
     model="gemini-2.5-flash-lite",
     instruction=(
-        "You receive prior research in state['research_findings'].\n"
-        "Create a concise summary as a bulleted list with 3–5 key points."
+        "You are a financial news classifier.\n"
+        "You receive state['news_items'], which is a list of news objects about a ticker.\n"
+        "For each news item, add:\n"
+        "- 'category' in "
+        "['earnings','guidance','macro','rating','product','legal','other']\n"
+        "- 'impact_short_term' in ['low','medium','high']\n"
+        "- 'impact_long_term' in ['low','medium','high']\n"
+        "Return the updated list as JSON under key 'classified_news'."
     ),
-    output_key="final_summary",
+    output_key="classified_news",
+)
+
+briefing_agent = Agent(
+    name="BriefingAgent",
+    model="gemini-2.5-flash-lite",
+    instruction=(
+        "You are generating a decision-oriented briefing for someone who follows a ticker.\n"
+        "You receive state['classified_news'].\n"
+        "Produce a structured markdown report with these sections:\n"
+        "1. Quick Snapshot (3 bullets max)\n"
+        "2. Material Events (High Impact)\n"
+        "   - List only items with 'high' in impact_short_term or impact_long_term.\n"
+        "3. Other Notable Items\n"
+        "   - Group medium-impact items by category.\n"
+        "4. Noise Filtered Out\n"
+        "   - Briefly mention the type of news you ignored (duplicates, generic blogs, etc.).\n"
+        "Avoid giving trading advice. Stay descriptive and analytical."
+    ),
+    output_key="final_briefing",
 )
 
 root_agent = Agent(
-    name="ResearchCoordinator",
+    name="TickerBriefingCoordinator",
     model="gemini-2.5-flash-lite",
     instruction=(
-        "You are a research coordinator. Your goal is to answer the user's query.\n"
-        "1. Call `ResearchAgent` to gather information.\n"
-        "2. Call `SummarizerAgent` to summarize the findings.\n"
-        "3. Return the final summary clearly to the user."
+        "You create a decision-oriented news briefing for a single stock ticker.\n"
+        "Process:\n"
+        "1. Call NewsCollectorAgent to fetch and summarize recent news.\n"
+        "2. Call ClassifierAgent to tag and score impact of each news item.\n"
+        "3. Call BriefingAgent to generate the final structured briefing.\n"
+        "4. Return ONLY the 'final_briefing' to the user."
     ),
-    tools=[AgentTool(research_agent), AgentTool(summarizer_agent)],
+    tools=[
+        AgentTool(news_collector_agent),
+        AgentTool(classifier_agent),
+        AgentTool(briefing_agent),
+    ],
 )
 
 runner = InMemoryRunner(agent=root_agent, app_name="TickerResearchApp")
