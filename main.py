@@ -86,7 +86,8 @@ briefing_agent = Agent(
         "   - Group medium-impact items by category.\n"
         "4. Noise Filtered Out\n"
         "   - Briefly mention the type of news you ignored (duplicates, generic blogs, etc.).\n"
-        "Avoid giving trading advice. Stay descriptive and analytical."
+        "5. Final advice\n"
+        "   - Make a conclusion on how the ticker can be impacted short-term, mid-term and long-term.\n"
     ),
     output_key="final_briefing",
 )
