@@ -142,7 +142,6 @@ async def run_agent_once(question: str) -> str:
             txt = getattr(part, "text", None)
             if txt:
                 text_chunks.append(txt)
-    print("DEBUG type(events):", type(events), flush=True)
     if not text_chunks:
         return "(No text response from agent)"
 
