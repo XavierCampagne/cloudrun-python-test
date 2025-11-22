@@ -97,7 +97,7 @@ root_agent = Agent(
     instruction=(
         "You create a decision-oriented news briefing for a single stock ticker.\n"
         "Process:\n"
-        "1. Call NewsCollectorAgent to fetch and summarize recent news.\n"
+        "1. Call NewsCollectorAgent to fetch and summarize recent news about the ticker provided by the user.\n"
         "2. Call ClassifierAgent to tag and score impact of each news item.\n"
         "3. Call BriefingAgent to generate the final structured briefing.\n"
         "4. Return ONLY the 'final_briefing' to the user."
