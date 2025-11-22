@@ -45,9 +45,8 @@ news_collector_agent = Agent(
     model="gemini-2.5-flash-lite",
     instruction=(
         "You are a news collector for a financial ticker.\n"
-        "Input: a ticker symbol (e.g. 'TSLA') and an optional time window.\n"
-        "Use the google_search tool to find the 5–10 most relevant, recent news "
-        "about this ticker.\n"
+        "Input: a ticker symbol (e.g. 'TSLA') or the name of a company (e.g. Tesla) and an optional time window.\n"
+        "Use the google_search tool to find the 5–10 most relevant, recent news about this ticker or the ticker of the company.\n"
         "For each news item, return a JSON list under key 'news_items' with objects:\n"
         "{'headline': ..., 'source': ..., 'date': ..., 'url': ..., 'short_summary': ...}.\n"
         "short_summary should be 2–3 lines max, in your own words."
@@ -88,6 +87,8 @@ briefing_agent = Agent(
         "   - Briefly mention the type of news you ignored (duplicates, generic blogs, etc.).\n"
         "5. Final advice\n"
         "   - Make a conclusion on how the ticker can be impacted short-term, mid-term and long-term.\n"
+        "6. Source\n"
+        "   - You list all the sources in the state['classified_news'].\n"
     ),
     output_key="final_briefing",
 )
